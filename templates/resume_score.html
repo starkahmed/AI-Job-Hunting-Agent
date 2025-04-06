@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Resume Score</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="max-w-4xl mx-auto py-10 px-6">
+        <h1 class="text-3xl font-bold mb-6 text-center">📊 Resume Score Report</h1>
+
+        {% if score %}
+            {% set score_data = score %}
+            
+            {% if score_data.error %}
+                <!-- Display error message if the score is not available -->
+                <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6">
+                    <p class="font-semibold">⚠️ {{ score_data.error }}</p>
+                </div>
+            {% else %}
+                <!-- Display resume scoring breakdown and total score -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div class="bg-white rounded-2xl shadow p-6">
+                        <h2 class="text-xl font-semibold mb-4">Scoring Breakdown</h2>
+                        <ul class="space-y-2 text-base">
+                            <li>✅ <strong>Clarity & Structure:</strong> {{ score_data.clarity | default('N/A') }}/10</li>
+                            <li>🎨 <strong>Formatting & Design:</strong> {{ score_data.formatting | default('N/A') }}/10</li>
+                            <li>🔑 <strong>Keywords Relevance:</strong> {{ score_data.keywords | default('N/A') }}/10</li>
+                            <li>✍️ <strong>Grammar & Spelling:</strong> {{ score_data.grammar | default('N/A') }}/10</li>
+                            <li>🤖 <strong>ATS Compatibility:</strong> {{ score_data.ats | default('N/A') }}/10</li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-white rounded-2xl shadow p-6 flex flex-col justify-between">
+                        <div>
+                            <h2 class="text-xl font-semibold mb-4">Total Score</h2>
+                            <p class="text-5xl font-bold text-blue-600">{{ score_data.total_score | default('N/A') }}/10</p>
+                        </div>
+                        <a href="/" class="mt-6 inline-block bg-blue-600 text-white px-4 py-2 rounded-xl text-center hover:bg-blue-700">⬅ Back to Home</a>
+                    </div>
+                </div>
+
+                <!-- Display AI Feedback -->
+                <div class="bg-white rounded-2xl shadow p-6">
+                    <h2 class="text-xl font-semibold mb-4">💬 AI Feedback</h2>
+                    <p class="text-gray-700 whitespace-pre-wrap">{{ score_data.comments | default('No feedback available at this time.') }}</p>
+                </div>
+            {% endif %}
+        {% else %}
+            <!-- Display message if score is unavailable -->
+            <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-6">
+                <p class="font-semibold">⚠️ Resume score is unavailable. Please try again later.</p>
+            </div>
+        {% endif %}
+    </div>
+
+</body>
+</html>

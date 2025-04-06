@@ -1,0 +1,78 @@
+<!-- ================================================================
+File: job_list.html
+Version: v3.4.1
+Description: Job listings page with match scores, cover letters,
+             save to favorites, and resume-aware results
+================================================================ -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Job Listings</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <div class="max-w-6xl mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-6 text-center text-blue-700">Matching Jobs</h1>
+
+    {% if jobs %}
+      <div class="space-y-6">
+        {% for job in jobs %}
+        <div class="bg-white p-6 rounded shadow">
+          <div class="flex justify-between items-start">
+            <div>
+              <h2 class="text-xl font-semibold text-blue-800">{{ job.title }}</h2>
+              <p class="text-sm text-gray-600">{{ job.company }} - {{ job.location }}</p>
+              {% if job.salary %}
+                <p class="text-sm text-green-600"><strong>Salary:</strong> {{ job.salary }}</p>
+              {% endif %}
+            </div>
+            {% if job.match_score is not none %}
+              <div class="bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full self-start">
+                Match Score: {{ '%.1f' % (job.match_score * 100) }}%
+              </div>
+            {% endif %}
+          </div>
+
+          <p class="mt-2 text-gray-800 text-sm">{{ job.description[:400] }}{% if job.description|length > 400 %}...{% endif %}</p>
+
+          {% if job.url %}
+            <a href="{{ job.url }}" target="_blank" class="mt-2 inline-block text-blue-600 text-sm underline">View Job</a>
+          {% endif %}
+
+          {% if job.source %}
+            <p class="text-xs text-gray-400 italic mt-1">Source: {{ job.source }}</p>
+          {% endif %}
+
+          <!-- Save to Favorites -->
+          <form action="/save" method="post" class="mt-3">
+            <input type="hidden" name="title" value="{{ job.title }}">
+            <input type="hidden" name="company" value="{{ job.company }}">
+            <input type="hidden" name="location" value="{{ job.location }}">
+            <input type="hidden" name="description" value="{{ job.description }}">
+            <input type="hidden" name="url" value="{{ job.url }}">
+            <button type="submit" class="text-sm text-green-700 underline">Save to Favorites</button>
+          </form>
+
+          <!-- Cover Letter Toggle -->
+          {% if job.cover_letter %}
+          <div class="mt-3">
+            <button type="button" class="text-blue-600 underline text-sm" onclick="
+              const el = document.getElementById('cover-{{ loop.index }}');
+              el.style.display = el.style.display === 'none' ? 'block' : 'none';
+            ">Show Cover Letter</button>
+            <div id="cover-{{ loop.index }}" style="display: none;" class="mt-2 bg-gray-50 p-3 border rounded text-sm text-gray-800 whitespace-pre-wrap">
+              {{ job.cover_letter }}
+            </div>
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-center text-gray-600">No job listings found. Try adjusting your filters.</p>
+    {% endif %}
+  </div>
+</body>
+</html>

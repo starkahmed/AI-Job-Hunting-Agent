@@ -1,0 +1,49 @@
+<!-- ================================================================
+File: templates/favorites.html
+Version: v2.0
+Description: Lists saved favorite jobs with company, location, preview,
+             and delete functionality in a styled layout.
+================================================================ -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Saved Jobs</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans text-gray-900">
+
+  <div class="max-w-5xl mx-auto p-6">
+    <h1 class="text-3xl font-bold mb-6 text-center text-green-700">Saved Job Listings</h1>
+
+    {% if favorites|length == 0 %}
+      <div class="text-center text-red-500 font-semibold">No favorite jobs saved yet.</div>
+    {% endif %}
+
+    <div class="grid grid-cols-1 gap-6">
+      {% for job in favorites %}
+        <div class="bg-white p-5 shadow rounded-xl border border-gray-200">
+          <h2 class="text-xl font-semibold text-blue-700">{{ job[1] }}</h2>
+          <p class="text-gray-700 font-medium mb-1">{{ job[2] }} – {{ job[3] }}</p>
+          <p class="text-sm text-gray-600 mb-2">{{ job[4][:250] }}...</p>
+
+          <div class="flex justify-between items-center mt-4">
+            <a href="{{ job[5] }}" target="_blank" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">View Job</a>
+
+            <form action="/remove_favorite" method="post">
+              <input type="hidden" name="job_id" value="{{ job[0] }}">
+              <button type="submit" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">Remove</button>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="text-center mt-6">
+      <a href="/" class="text-blue-600 hover:underline">← Back to Home</a>
+    </div>
+  </div>
+
+</body>
+</html>

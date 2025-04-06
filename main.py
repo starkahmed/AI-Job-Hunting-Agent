@@ -1,54 +1,176 @@
-from fastapi import FastAPI, UploadFile, File
-from pydantic import BaseModel
-import spacy
-import openai
+# ================================================================
+# File: main.py
+# Version: v3.4
+# Description: FastAPI app with resume upload, parsing, scraping,
+#              dynamic filtering, scoring, favorites, and cover letters
+# ================================================================
 
-# Load spaCy NLP model for skill extraction
-nlp = spacy.load("en_core_web_sm")
-
-# Dummy job dataset (replace with API later)
-jobs = [
-    {"id": 1, "title": "Embedded Software Engineer", "skills": ["C++", "AUTOSAR", "Embedded Systems"]},
-    {"id": 2, "title": "Cloud Engineer", "skills": ["GCP", "Docker", "Kubernetes"]},
-    {"id": 3, "title": "Full Stack Developer", "skills": ["Python", "FastAPI", "React"]}
-]
-
-# OpenAI API Key (replace with your actual key)
-openai.api_key = "your-openai-api-key"
+from fastapi import FastAPI, File, UploadFile, Form, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from modules.job_search import run_all_scrapers, create_jobs_table
+from modules.resume_parser import parse_resume
+from modules.resume_scorer import score_resume_against_job  # NEW
+import sqlite3
+import uuid
+import os
+import shutil
 
 app = FastAPI()
 
-class ResumeFile(BaseModel):
-    filename: str
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Extract skills from resume text
-def extract_skills(text):
-    doc = nlp(text)
-    return list(set([token.text for token in doc if token.pos_ in ["NOUN", "PROPN"]]))
+# Paths
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+DB_PATH = os.path.join(BASE_DIR, "favorites.db")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# AI Resume Refinement
-def refine_resume(resume_text):
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[{"role": "system", "content": "Improve this resume for better job matching."},
-                  {"role": "user", "content": resume_text}]
-    )
-    return response["choices"][0]["message"]["content"]
+# Templates
+templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-@app.post("/upload-resume/")
-async def upload_resume(file: UploadFile = File(...)):
-    content = await file.read()
-    resume_text = content.decode("utf-8")
-    skills = extract_skills(resume_text)
-    return {"extracted_skills": skills}
+# Initialize DB
+create_jobs_table()
 
-@app.post("/match-jobs/")
-async def match_jobs(resume: ResumeFile):
-    resume_skills = extract_skills(resume.filename)
-    matched_jobs = [job for job in jobs if any(skill in job["skills"] for skill in resume_skills)]
-    return {"matched_jobs": matched_jobs}
+def init_fav_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS favorites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT,
+            company TEXT,
+            location TEXT,
+            description TEXT,
+            url TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-@app.post("/refine-resume/")
-async def refine_resume_api(resume: ResumeFile):
-    refined_text = refine_resume(resume.filename)
-    return {"refined_resume": refined_text}
+init_fav_db()
+
+# =================== Resume Upload =====================
+@app.post("/upload_resume", response_class=HTMLResponse)
+async def upload_resume(request: Request, file: UploadFile = File(...)):
+    ext = os.path.splitext(file.filename)[1]
+    filename = f"{uuid.uuid4().hex}{ext}"
+    path = os.path.join(UPLOAD_DIR, filename)
+    with open(path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    # Optional: Parse resume (can be real or mocked)
+    parsed_resume = parse_resume(path)
+
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "resume": parsed_resume,
+        "message": "✅ Resume uploaded successfully!"
+    })
+
+# =================== Trigger Scraping =====================
+@app.post("/scrape_jobs")
+def scrape_jobs(query: str = Form(...), location: str = Form("")):
+    run_all_scrapers(query, location)
+    return {"message": "Scraping complete"}
+
+# =================== Get Filtered Job Listings =====================
+@app.get("/jobs", response_class=HTMLResponse)
+async def list_jobs(request: Request,
+                    query: str = "",
+                    location: str = "",
+                    experience: str = "",
+                    min_salary: int = 0,
+                    max_salary: int = 999999):
+
+    conn = sqlite3.connect("jobs.db")
+    c = conn.cursor()
+    c.execute("""
+        SELECT id, title, company, location, description, url, salary, source
+        FROM jobs
+    """)
+    rows = c.fetchall()
+    conn.close()
+
+    jobs = []
+    for row in rows:
+        job = {
+            "id": row[0],
+            "title": row[1],
+            "company": row[2],
+            "location": row[3],
+            "description": row[4],
+            "url": row[5],
+            "salary": row[6] or "",
+            "source": row[7]
+        }
+
+        if location.lower() not in job["location"].lower():
+            continue
+        if query.lower() not in job["title"].lower() and query.lower() not in job["description"].lower():
+            continue
+
+        try:
+            sal = int("".join(filter(str.isdigit, job["salary"])))
+            if not (min_salary <= sal <= max_salary):
+                continue
+        except:
+            pass
+
+        # Match Score Enhancement (v3.4)
+        try:
+            resume_text = request.query_params.get("resume") or ""
+            if resume_text:
+                job["match_score"] = score_resume_against_job(resume_text, job["description"])
+        except:
+            job["match_score"] = None
+
+        jobs.append(job)
+
+    return templates.TemplateResponse("job_list.html", {"request": request, "jobs": jobs})
+
+# =================== Save Job to Favorites =====================
+@app.post("/save")
+async def save_job(title: str = Form(...), company: str = Form(...), location: str = Form(...), description: str = Form(...), url: str = Form(...)):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("INSERT INTO favorites (title, company, location, description, url) VALUES (?, ?, ?, ?, ?)",
+              (title, company, location, description, url))
+    conn.commit()
+    conn.close()
+    return {"message": "Job saved successfully"}
+
+# =================== Show Favorite Jobs =====================
+@app.get("/favorites", response_class=HTMLResponse)
+async def show_favorites(request: Request):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT id, title, company, location, description, url FROM favorites ORDER BY id DESC")
+    favorites = c.fetchall()
+    conn.close()
+    return templates.TemplateResponse("favorites.html", {"request": request, "favorites": favorites})
+
+# =================== Remove Favorite Job =====================
+@app.post("/remove_favorite")
+async def remove_favorite(job_id: int = Form(...)):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("DELETE FROM favorites WHERE id = ?", (job_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Job removed from favorites"}
+
+# =================== Home Page =====================
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})

@@ -1,0 +1,7 @@
+Flask
+requests
+spacy
+PyMuPDF
+openai
+docx2txt
+pdfplumber

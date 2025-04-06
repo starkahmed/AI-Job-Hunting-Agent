@@ -1,0 +1,103 @@
+# ================================================================
+# File: index.html
+# Version: v3.4.1
+# Description: UI for resume upload, job scraping, match score,
+#              favorites, cover letters, and enhanced features
+# ================================================================
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Job Hunting Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <div class="max-w-6xl mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-6">AI Job Hunting Agent</h1>
+
+    <!-- Resume Upload -->
+    <form action="/upload_resume" method="post" enctype="multipart/form-data" class="mb-6 p-4 border rounded bg-white">
+      <label class="block mb-2 font-semibold">Upload Resume:</label>
+      <input type="file" name="file" required class="mb-2">
+      <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Upload</button>
+    </form>
+
+    {% if message %}
+      <div class="mb-4 text-green-600">{{ message }}</div>
+    {% endif %}
+
+    <!-- Resume Preview -->
+    {% if resume %}
+      <div class="mb-6 p-4 border rounded bg-white">
+        <h2 class="text-xl font-semibold mb-2">Resume Preview:</h2>
+        <pre class="whitespace-pre-wrap text-sm">{{ resume }}</pre>
+      </div>
+    {% endif %}
+
+    <!-- Job Search Form -->
+    <form action="/jobs" method="get" class="mb-6 p-4 border rounded bg-white">
+      <label class="block mb-2 font-semibold">Search Jobs:</label>
+      <input type="text" name="query" placeholder="Job title or keyword" required class="w-full mb-2 p-2 border rounded">
+      <input type="text" name="location" placeholder="Location (optional)" class="w-full mb-2 p-2 border rounded">
+      <input type="number" name="min_salary" placeholder="Minimum Salary" class="w-full mb-2 p-2 border rounded">
+      <input type="number" name="max_salary" placeholder="Maximum Salary" class="w-full mb-2 p-2 border rounded">
+      {% if resume %}
+        <input type="hidden" name="resume" value="{{ resume | replace('\n', ' ') }}">
+      {% endif %}
+      <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Find Jobs</button>
+    </form>
+
+    <!-- Job Results -->
+    {% if jobs %}
+      <div class="space-y-6">
+        {% for job in jobs %}
+          <div class="p-4 border rounded bg-white">
+            <div class="flex justify-between items-start">
+              <div>
+                <h3 class="text-xl font-bold">{{ job.title }}</h3>
+                <p class="text-sm text-gray-600">{{ job.company }} - {{ job.location }}</p>
+              </div>
+              {% if job.match_score is not none %}
+                <div class="bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full self-start">
+                  Match Score: {{ '%.1f' % (job.match_score * 100) }}%
+                </div>
+              {% else %}
+                <div class="bg-gray-200 text-gray-600 text-xs font-semibold px-3 py-1 rounded-full self-start">
+                  No Score
+                </div>
+              {% endif %}
+            </div>
+
+            <p class="mt-2 text-sm">{{ job.description[:300] }}{% if job.description|length > 300 %}...{% endif %}</p>
+            <a href="{{ job.url }}" target="_blank" class="block mt-2 text-blue-600 hover:underline">View Job</a>
+            <p class="text-xs text-gray-500 mt-1">Source: {{ job.source }}</p>
+
+            <!-- Save Button -->
+            <form action="/save" method="post" class="mt-2">
+              <input type="hidden" name="title" value="{{ job.title }}">
+              <input type="hidden" name="company" value="{{ job.company }}">
+              <input type="hidden" name="location" value="{{ job.location }}">
+              <input type="hidden" name="description" value="{{ job.description }}">
+              <input type="hidden" name="url" value="{{ job.url }}">
+              <button type="submit" class="text-sm text-green-700 underline">Save to Favorites</button>
+            </form>
+
+            <!-- Cover Letter -->
+            {% if job.cover_letter %}
+              <button type="button" class="mt-3 text-blue-500 hover:underline" onclick="
+                const el = document.getElementById('cover-{{ loop.index }}');
+                el.style.display = el.style.display === 'none' ? 'block' : 'none';
+              ">Show Cover Letter</button>
+              <div id="cover-{{ loop.index }}" style="display: none;" class="mt-2 p-3 bg-gray-50 border rounded text-sm whitespace-pre-wrap">
+                {{ job.cover_letter }}
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+</body>
+</html>
