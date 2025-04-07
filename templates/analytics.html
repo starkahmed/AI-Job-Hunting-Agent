@@ -1,0 +1,71 @@
+<!-- ================================================================
+File: templates/analytics.html
+Version: v3.6
+Description: Visual analytics for job applications and insights
+================================================================ -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Analytics Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen p-6">
+  <div class="max-w-5xl mx-auto">
+    <h1 class="text-3xl font-bold text-center text-blue-700 mb-8">Analytics Dashboard</h1>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="bg-white p-6 rounded shadow">
+        <h2 class="text-xl font-semibold mb-4">Applications by Status</h2>
+        <canvas id="statusChart"></canvas>
+      </div>
+
+      <div class="bg-white p-6 rounded shadow">
+        <h2 class="text-xl font-semibold mb-4">Match Score Distribution</h2>
+        <canvas id="scoreChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const statusData = JSON.parse('{{ status_data | tojson | safe }}');
+    const scoreData = JSON.parse('{{ score_data | tojson | safe }}');
+
+    new Chart(document.getElementById('statusChart'), {
+      type: 'pie',
+      data: {
+        labels: Object.keys(statusData),
+        datasets: [{
+          data: Object.values(statusData),
+          backgroundColor: ['#60a5fa', '#34d399', '#f87171', '#fbbf24']
+        }]
+      },
+      options: {
+        responsive: true
+      }
+    });
+
+    new Chart(document.getElementById('scoreChart'), {
+      type: 'bar',
+      data: {
+        labels: scoreData.bins,
+        datasets: [{
+          label: 'Job Match Scores',
+          data: scoreData.counts,
+          backgroundColor: '#6366f1'
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          y: {
+            beginAtZero: true
+          }
+        }
+      }
+    });
+  </script>
+</body>
+</html>

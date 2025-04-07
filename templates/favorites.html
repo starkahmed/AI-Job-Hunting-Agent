@@ -1,49 +1,67 @@
-<!-- ================================================================
-File: templates/favorites.html
-Version: v2.0
-Description: Lists saved favorite jobs with company, location, preview,
-             and delete functionality in a styled layout.
-================================================================ -->
-
+<!-- templates/favorites.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Saved Jobs</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+    <meta charset="UTF-8">
+    <title>Saved Jobs Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 font-sans text-gray-900">
+<body class="bg-gray-100 min-h-screen font-sans">
+    <div class="max-w-7xl mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6">📌 Favorite Jobs</h1>
 
-  <div class="max-w-5xl mx-auto p-6">
-    <h1 class="text-3xl font-bold mb-6 text-center text-green-700">Saved Job Listings</h1>
+        {% if favorites %}
+        <div class="grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+            {% for job in favorites %}
+            <div class="bg-white shadow-md border border-gray-200 rounded-2xl p-5 hover:shadow-lg transition duration-200">
+                <div class="flex justify-between items-start mb-2">
+                    <div>
+                        <h2 class="text-lg font-semibold text-blue-700">{{ job[1] }}</h2>
+                        <p class="text-sm text-gray-600">{{ job[2] }} • {{ job[3] }}</p>
+                    </div>
+                    <form method="post" action="/remove_favorite">
+                        <input type="hidden" name="job_id" value="{{ job[0] }}">
+                        <button type="submit" title="Remove" class="text-red-500 hover:text-red-700 text-sm">✖</button>
+                    </form>
+                </div>
 
-    {% if favorites|length == 0 %}
-      <div class="text-center text-red-500 font-semibold">No favorite jobs saved yet.</div>
-    {% endif %}
+                <p class="text-sm text-gray-700 mt-2 mb-4 line-clamp-4">{{ job[4] }}</p>
 
-    <div class="grid grid-cols-1 gap-6">
-      {% for job in favorites %}
-        <div class="bg-white p-5 shadow rounded-xl border border-gray-200">
-          <h2 class="text-xl font-semibold text-blue-700">{{ job[1] }}</h2>
-          <p class="text-gray-700 font-medium mb-1">{{ job[2] }} – {{ job[3] }}</p>
-          <p class="text-sm text-gray-600 mb-2">{{ job[4][:250] }}...</p>
+                <a href="{{ job[5] }}" target="_blank" class="text-sm text-blue-600 hover:underline">
+                    🔗 View Job Posting
+                </a>
 
-          <div class="flex justify-between items-center mt-4">
-            <a href="{{ job[5] }}" target="_blank" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">View Job</a>
+                <div class="mt-4">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Match Score</label>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                        <div class="h-2.5 rounded-full bg-green-500" style="width: {{ (job[7] * 100) | round(0) if job[7] else 0 }}%;"></div>
+                    </div>
+                    <p class="text-xs text-gray-500 text-right mt-1">
+                        {{ (job[7] * 100) | round(1) if job[7] else 'N/A' }}%
+                    </p>
+                </div>
 
-            <form action="/remove_favorite" method="post">
-              <input type="hidden" name="job_id" value="{{ job[0] }}">
-              <button type="submit" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">Remove</button>
-            </form>
-          </div>
+                <div class="mt-4 flex justify-between items-center">
+                    <span class="text-xs text-gray-500">Status:</span>
+                    <form method="post" action="/update_status" class="flex gap-2">
+                        <input type="hidden" name="job_id" value="{{ job[0] }}">
+                        <select name="status" onchange="this.form.submit()" class="text-xs bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring focus:border-blue-400">
+                            <option {% if job[6] == 'Applied' %}selected{% endif %}>Applied</option>
+                            <option {% if job[6] == 'Interview' %}selected{% endif %}>Interview</option>
+                            <option {% if job[6] == 'Rejected' %}selected{% endif %}>Rejected</option>
+                            <option {% if job[6] == 'Offer' %}selected{% endif %}>Offer</option>
+                        </select>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
         </div>
-      {% endfor %}
+        {% else %}
+        <div class="text-center mt-20 text-gray-500">
+            <p class="text-lg">You haven’t saved any jobs yet.</p>
+            <p class="text-sm">Start searching and saving jobs to track your opportunities here.</p>
+        </div>
+        {% endif %}
     </div>
-
-    <div class="text-center mt-6">
-      <a href="/" class="text-blue-600 hover:underline">← Back to Home</a>
-    </div>
-  </div>
-
 </body>
 </html>

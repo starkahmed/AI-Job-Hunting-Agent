@@ -1,8 +1,9 @@
 # ================================================================
 # File: main.py
-# Version: v3.4
+# Version: v3.6
 # Description: FastAPI app with resume upload, parsing, scraping,
-#              dynamic filtering, scoring, favorites, and cover letters
+#              dynamic filtering, scoring, favorites, cover letters,
+#              and analytics dashboard
 # ================================================================
 
 from fastapi import FastAPI, File, UploadFile, Form, Query, Request
@@ -17,6 +18,7 @@ import sqlite3
 import uuid
 import os
 import shutil
+from collections import Counter
 
 app = FastAPI()
 
@@ -52,7 +54,9 @@ def init_fav_db():
             company TEXT,
             location TEXT,
             description TEXT,
-            url TEXT
+            url TEXT,
+            status TEXT DEFAULT 'Applied',
+            match_score REAL DEFAULT 0
         )
     """)
     conn.commit()
@@ -69,7 +73,6 @@ async def upload_resume(request: Request, file: UploadFile = File(...)):
     with open(path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    # Optional: Parse resume (can be real or mocked)
     parsed_resume = parse_resume(path)
 
     return templates.TemplateResponse("index.html", {
@@ -127,7 +130,6 @@ async def list_jobs(request: Request,
         except:
             pass
 
-        # Match Score Enhancement (v3.4)
         try:
             resume_text = request.query_params.get("resume") or ""
             if resume_text:
@@ -141,11 +143,13 @@ async def list_jobs(request: Request,
 
 # =================== Save Job to Favorites =====================
 @app.post("/save")
-async def save_job(title: str = Form(...), company: str = Form(...), location: str = Form(...), description: str = Form(...), url: str = Form(...)):
+async def save_job(title: str = Form(...), company: str = Form(...), location: str = Form(...), description: str = Form(...), url: str = Form(...), match_score: float = Form(0.0)):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("INSERT INTO favorites (title, company, location, description, url) VALUES (?, ?, ?, ?, ?)",
-              (title, company, location, description, url))
+    c.execute("""
+        INSERT INTO favorites (title, company, location, description, url, match_score)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (title, company, location, description, url, match_score))
     conn.commit()
     conn.close()
     return {"message": "Job saved successfully"}
@@ -155,7 +159,7 @@ async def save_job(title: str = Form(...), company: str = Form(...), location: s
 async def show_favorites(request: Request):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT id, title, company, location, description, url FROM favorites ORDER BY id DESC")
+    c.execute("SELECT id, title, company, location, description, url, status, match_score FROM favorites ORDER BY id DESC")
     favorites = c.fetchall()
     conn.close()
     return templates.TemplateResponse("favorites.html", {"request": request, "favorites": favorites})
@@ -169,6 +173,52 @@ async def remove_favorite(job_id: int = Form(...)):
     conn.commit()
     conn.close()
     return {"message": "Job removed from favorites"}
+
+# =================== Update Job Status =====================
+@app.post("/update_status")
+async def update_status(job_id: int = Form(...), status: str = Form(...)):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE favorites SET status = ? WHERE id = ?", (status, job_id))
+    conn.commit()
+    conn.close()
+    return {"message": "Status updated"}
+
+# =================== Analytics Dashboard =====================
+@app.get("/analytics", response_class=HTMLResponse)
+async def analytics(request: Request):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT status, match_score FROM favorites")
+    data = c.fetchall()
+    conn.close()
+
+    status_counts = Counter([row[0] for row in data])
+
+    match_score_bins = {
+        "0–50%": 0,
+        "50–70%": 0,
+        "70–90%": 0,
+        "90–100%": 0
+    }
+
+    for _, score in data:
+        score = score or 0
+        score *= 100
+        if score < 50:
+            match_score_bins["0–50%"] += 1
+        elif score < 70:
+            match_score_bins["50–70%"] += 1
+        elif score < 90:
+            match_score_bins["70–90%"] += 1
+        else:
+            match_score_bins["90–100%"] += 1
+
+    return templates.TemplateResponse("analytics.html", {
+        "request": request,
+        "status_data": dict(status_counts),
+        "score_data": match_score_bins
+    })
 
 # =================== Home Page =====================
 @app.get("/", response_class=HTMLResponse)
