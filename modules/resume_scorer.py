@@ -1,119 +1,59 @@
 # ================================================================
-# File: modules/resume_scorer.py
-# Version: v1.1
-# Description: Score resume content and generate AI-based feedback
+# File: resume_scorer.py
+# Version: v5.5
+# Description: Scores resume against job description and identifies
+#              missing keywords and skills.
 # ================================================================
 
-import openai
-import os
-from dotenv import load_dotenv
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import re
 
-load_dotenv()
+def clean_text(text):
+    if not text:
+        return ""
+    text = text.lower()
+    text = re.sub(r"[^a-zA-Z0-9\s]", "", text)
+    return text
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-# =================== Resume Scoring =====================
-
-def score_resume(resume_text: str) -> dict:
+def score_resume_against_job(resume_text: str, job_description: str) -> float:
     """
-    Scores the resume based on relevance, clarity, format, and skills.
-    Returns a dictionary with individual scores and total score.
+    Computes a cosine similarity score between resume text and job description.
+    Returns a float between 0 and 1.
     """
-    prompt = f"""
-You are an expert resume evaluator. Analyze the following resume and score it in the following categories (each out of 10):
-- Relevance to tech industry jobs
-- Clarity & structure
-- Skills & technologies
-- Formatting & layout
-Then calculate a total score (out of 40). Give brief explanation for each score.
+    resume_text = clean_text(resume_text)
+    job_description = clean_text(job_description)
 
-Resume:
-\"\"\"
-{resume_text}
-\"\"\"
+    if not resume_text or not job_description:
+        return 0.0
 
-Respond in JSON format like this:
-{{
-  "relevance": 8,
-  "clarity": 7,
-  "skills": 6,
-  "formatting": 9,
-  "total_score": 30,
-  "feedback": {{
-    "relevance": "Relevant experience but missing recent tools.",
-    "clarity": "Well-structured with a few long paragraphs.",
-    "skills": "Good coverage of web dev, but no mention of cloud tech.",
-    "formatting": "Clean and ATS-friendly."
-  }}
-}}
-"""
+    vectorizer = TfidfVectorizer()
+    vectors = vectorizer.fit_transform([resume_text, job_description])
+    score = cosine_similarity(vectors[0:1], vectors[1:2])[0][0]
+    return round(score, 2)
 
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are an expert resume reviewer."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7,
-            max_tokens=600
-        )
-        result = response.choices[0].message.content
-        return eval(result)  # Assumes OpenAI returns clean JSON-like dict
-    except Exception as e:
-        return {
-            "error": str(e),
-            "relevance": 0,
-            "clarity": 0,
-            "skills": 0,
-            "formatting": 0,
-            "total_score": 0,
-            "feedback": {
-                "relevance": "Error scoring resume.",
-                "clarity": "",
-                "skills": "",
-                "formatting": ""
-            }
-        }
-
-# =================== Resume vs Job Match Scoring (v1.1+) =====================
-
-def score_resume_against_job(resume_text: str, job_description: str) -> int:
+def find_missing_keywords(resume_text: str, job_description: str) -> list:
     """
-    Returns a simple match score (0-100) based on keyword overlap between resume and job description.
+    Identifies key terms in the job description that are missing from the resume.
     """
-    resume_words = set(resume_text.lower().split())
-    job_words = set(job_description.lower().split())
-    if not job_words:
-        return 0
-    overlap = resume_words & job_words
-    return int(len(overlap) / len(job_words) * 100)
+    resume_text = clean_text(resume_text)
+    job_description = clean_text(job_description)
 
-# =================== Feedback Only (optional) =====================
+    resume_tokens = set(resume_text.split())
+    job_tokens = set(job_description.split())
 
-def generate_resume_feedback(resume_text: str) -> str:
+    missing = job_tokens - resume_tokens
+    # Optional: Filter to remove common/stop words (or use NLP libraries)
+    return list(missing)
+
+def analyze_resume_vs_job(resume_text: str, job_description: str) -> dict:
     """
-    Generates general improvement suggestions for the resume.
+    Returns both score and list of missing keywords.
     """
-    prompt = f"""
-You are a professional career coach. Read the resume below and provide improvement suggestions in 5 bullet points.
-
-Resume:
-\"\"\"
-{resume_text}
-\"\"\"
-"""
-
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a career coach and resume expert."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7,
-            max_tokens=300
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        return f"Error generating feedback: {str(e)}"
+    score = score_resume_against_job(resume_text, job_description)
+    missing_keywords = find_missing_keywords(resume_text, job_description)
+    
+    return {
+        "match_score": score,
+        "missing_keywords": missing_keywords
+    }

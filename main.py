@@ -1,226 +1,100 @@
 # ================================================================
 # File: main.py
-# Version: v3.6
-# Description: FastAPI app with resume upload, parsing, scraping,
-#              dynamic filtering, scoring, favorites, cover letters,
-#              and analytics dashboard
+# Version: v5.5
+# Description: FastAPI backend integrating resume parsing, unified job search,
+#              scoring, enhancement, analytics, favorite management, and dashboard.
 # ================================================================
 
-from fastapi import FastAPI, File, UploadFile, Form, Query, Request
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, UploadFile, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from modules.job_search import run_all_scrapers, create_jobs_table
-from modules.resume_parser import parse_resume
-from modules.resume_scorer import score_resume_against_job  # NEW
-import sqlite3
-import uuid
+from fastapi.templating import Jinja2Templates
+from typing import List, Optional
+import uvicorn
 import os
-import shutil
-from collections import Counter
 
-app = FastAPI()
-
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+# ====== Importing internal modules ======
+from modules import (
+    resume_parser, job_search, favorite_manager,
+    feedback_generator, cover_letter_generator,
+    resume_scorer, dashboard_manager, analytics_engine
 )
 
-# Paths
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
-DB_PATH = os.path.join(BASE_DIR, "favorites.db")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-# Templates
-templates = Jinja2Templates(directory="templates")
+# ====== FastAPI Setup ======
+app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
 
-# Initialize DB
-create_jobs_table()
+# ====== Global cache for resume & extracted data ======
+user_resume_text = ""
+user_parsed_skills = []
 
-def init_fav_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS favorites (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT,
-            company TEXT,
-            location TEXT,
-            description TEXT,
-            url TEXT,
-            status TEXT DEFAULT 'Applied',
-            match_score REAL DEFAULT 0
-        )
-    """)
-    conn.commit()
-    conn.close()
+# ====== Routes ======
 
-init_fav_db()
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
-# =================== Resume Upload =====================
-@app.post("/upload_resume", response_class=HTMLResponse)
-async def upload_resume(request: Request, file: UploadFile = File(...)):
-    ext = os.path.splitext(file.filename)[1]
-    filename = f"{uuid.uuid4().hex}{ext}"
-    path = os.path.join(UPLOAD_DIR, filename)
-    with open(path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-
-    parsed_resume = parse_resume(path)
-
+@app.post("/upload_resume")
+async def upload_resume(request: Request, file: UploadFile):
+    global user_resume_text, user_parsed_skills
+    user_resume_text = await resume_parser.extract_text(file)
+    user_parsed_skills = resume_parser.extract_skills(user_resume_text)
     return templates.TemplateResponse("index.html", {
         "request": request,
-        "resume": parsed_resume,
-        "message": "✅ Resume uploaded successfully!"
+        "resume_text": user_resume_text,
+        "skills": user_parsed_skills,
     })
 
-# =================== Trigger Scraping =====================
-@app.post("/scrape_jobs")
-def scrape_jobs(query: str = Form(...), location: str = Form("")):
-    run_all_scrapers(query, location)
-    return {"message": "Scraping complete"}
+@app.get("/search_jobs")
+async def search_jobs(request: Request, query: str = Form(...), location: str = Form("remote")):
+    results = job_search.unified_job_search(query=query, location=location)
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "jobs": results,
+        "resume_text": user_resume_text
+    })
 
-# =================== Get Filtered Job Listings =====================
-@app.get("/jobs", response_class=HTMLResponse)
-async def list_jobs(request: Request,
-                    query: str = "",
-                    location: str = "",
-                    experience: str = "",
-                    min_salary: int = 0,
-                    max_salary: int = 999999):
+@app.post("/match_score")
+async def match_score(job_description: str):
+    score = resume_scorer.score_resume(user_resume_text, job_description)
+    suggestions = resume_scorer.suggest_improvements(user_resume_text)
+    return {"score": score, "suggestions": suggestions}
 
-    conn = sqlite3.connect("jobs.db")
-    c = conn.cursor()
-    c.execute("""
-        SELECT id, title, company, location, description, url, salary, source
-        FROM jobs
-    """)
-    rows = c.fetchall()
-    conn.close()
+@app.post("/generate_cover_letter")
+async def generate_cover_letter(job_description: str, job_title: Optional[str] = ""):
+    letter = cover_letter_generator.generate_cover_letter(
+        resume_text=user_resume_text,
+        job_description=job_description,
+        job_title=job_title
+    )
+    return {"cover_letter": letter}
 
-    jobs = []
-    for row in rows:
-        job = {
-            "id": row[0],
-            "title": row[1],
-            "company": row[2],
-            "location": row[3],
-            "description": row[4],
-            "url": row[5],
-            "salary": row[6] or "",
-            "source": row[7]
-        }
+@app.post("/feedback")
+async def get_feedback():
+    feedback = feedback_generator.generate_feedback(user_resume_text)
+    return {"feedback": feedback}
 
-        if location.lower() not in job["location"].lower():
-            continue
-        if query.lower() not in job["title"].lower() and query.lower() not in job["description"].lower():
-            continue
+@app.post("/add_favorite")
+async def add_favorite(job_id: str, job_data: dict):
+    favorite_manager.add_to_favorites(job_id, job_data)
+    return {"status": "Job added to favorites."}
 
-        try:
-            sal = int("".join(filter(str.isdigit, job["salary"])))
-            if not (min_salary <= sal <= max_salary):
-                continue
-        except:
-            pass
-
-        try:
-            resume_text = request.query_params.get("resume") or ""
-            if resume_text:
-                job["match_score"] = score_resume_against_job(resume_text, job["description"])
-        except:
-            job["match_score"] = None
-
-        jobs.append(job)
-
-    return templates.TemplateResponse("job_list.html", {"request": request, "jobs": jobs})
-
-# =================== Save Job to Favorites =====================
-@app.post("/save")
-async def save_job(title: str = Form(...), company: str = Form(...), location: str = Form(...), description: str = Form(...), url: str = Form(...), match_score: float = Form(0.0)):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("""
-        INSERT INTO favorites (title, company, location, description, url, match_score)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (title, company, location, description, url, match_score))
-    conn.commit()
-    conn.close()
-    return {"message": "Job saved successfully"}
-
-# =================== Show Favorite Jobs =====================
-@app.get("/favorites", response_class=HTMLResponse)
-async def show_favorites(request: Request):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT id, title, company, location, description, url, status, match_score FROM favorites ORDER BY id DESC")
-    favorites = c.fetchall()
-    conn.close()
+@app.get("/favorites")
+async def view_favorites(request: Request):
+    favorites = favorite_manager.get_favorites()
     return templates.TemplateResponse("favorites.html", {"request": request, "favorites": favorites})
 
-# =================== Remove Favorite Job =====================
-@app.post("/remove_favorite")
-async def remove_favorite(job_id: int = Form(...)):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("DELETE FROM favorites WHERE id = ?", (job_id,))
-    conn.commit()
-    conn.close()
-    return {"message": "Job removed from favorites"}
-
-# =================== Update Job Status =====================
-@app.post("/update_status")
-async def update_status(job_id: int = Form(...), status: str = Form(...)):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("UPDATE favorites SET status = ? WHERE id = ?", (status, job_id))
-    conn.commit()
-    conn.close()
-    return {"message": "Status updated"}
-
-# =================== Analytics Dashboard =====================
-@app.get("/analytics", response_class=HTMLResponse)
-async def analytics(request: Request):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT status, match_score FROM favorites")
-    data = c.fetchall()
-    conn.close()
-
-    status_counts = Counter([row[0] for row in data])
-
-    match_score_bins = {
-        "0–50%": 0,
-        "50–70%": 0,
-        "70–90%": 0,
-        "90–100%": 0
-    }
-
-    for _, score in data:
-        score = score or 0
-        score *= 100
-        if score < 50:
-            match_score_bins["0–50%"] += 1
-        elif score < 70:
-            match_score_bins["50–70%"] += 1
-        elif score < 90:
-            match_score_bins["70–90%"] += 1
-        else:
-            match_score_bins["90–100%"] += 1
-
-    return templates.TemplateResponse("analytics.html", {
+@app.get("/dashboard")
+async def dashboard(request: Request):
+    metrics = dashboard_manager.generate_dashboard(user_resume_text)
+    analytics = analytics_engine.generate_analytics(user_resume_text)
+    return templates.TemplateResponse("dashboard.html", {
         "request": request,
-        "status_data": dict(status_counts),
-        "score_data": match_score_bins
+        "metrics": metrics,
+        "analytics": analytics
     })
 
-# =================== Home Page =====================
-@app.get("/", response_class=HTMLResponse)
-def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+# ====== Run App ======
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

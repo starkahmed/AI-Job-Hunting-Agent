@@ -1,0 +1,54 @@
+<!-- ============================================================
+File: upload.html
+Version: v5.5
+Description: Upload resume + advanced filters for job search.
+================================================================ -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Resume - AI Job Agent</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="max-w-4xl mx-auto p-6 bg-white shadow-md mt-10 rounded-xl">
+        <h2 class="text-2xl font-bold mb-4">Upload Your Resume</h2>
+        <form action="/upload_resume" method="post" enctype="multipart/form-data" class="space-y-6">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Choose Resume File</label>
+                <input type="file" name="resume_file" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm" required>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Job Title</label>
+                    <input type="text" name="job_title" placeholder="e.g. Software Engineer" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Location</label>
+                    <input type="text" name="location" placeholder="City, State, or Remote" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Minimum Salary (INR)</label>
+                    <input type="number" name="min_salary" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Experience Level</label>
+                    <select name="experience" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm">
+                        <option value="">Any</option>
+                        <option value="Entry">Entry Level</option>
+                        <option value="Mid">Mid Level</option>
+                        <option value="Senior">Senior Level</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md">
+                    Upload and Search Jobs
+                </button>
+            </div>
+        </form>
+    </div>
+</body>
+</html>

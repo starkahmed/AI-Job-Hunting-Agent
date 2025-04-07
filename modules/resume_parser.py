@@ -1,93 +1,115 @@
 # ================================================================
 # File: modules/resume_parser.py
-# Version: v1.2
-# Description: Parse resumes from uploaded files or external sources like LinkedIn, Naukri, Indeed.
+# Version: v5.5
+# Description: Parses uploaded resumes or LinkedIn/Naukri/Indeed profiles.
+#              Extracts skills, education, experience, contact info, and more
+#              for downstream scoring, analytics, and enhancement.
 # ================================================================
 
-import re
-import docx2txt
 import pdfplumber
-from typing import Dict, Optional
+import docx
+import re
+import os
+import spacy
+import nltk
+from langdetect import detect
+from nltk.corpus import stopwords
+
+nlp = spacy.load("en_core_web_sm")
+
+# Load stopwords
+stop_words = set(stopwords.words('english'))
+
+# Keywords database (simplified)
+SKILLS_DB = ["python", "java", "excel", "sql", "react", "aws", "data analysis", "machine learning"]
+EDUCATION_KEYWORDS = ["bachelor", "master", "phd", "b.tech", "m.tech", "b.sc", "m.sc"]
+EXPERIENCE_KEYWORDS = ["experience", "worked", "employment", "role", "responsibilities"]
+LOCATION_REGEX = r'\b(?:[A-Z][a-z]+\s?){1,3},?\s?(?:India)?\b'
 
 
-# =================== Extract Text from Resume =====================
+def extract_text_from_pdf(pdf_path):
+    text = ''
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            text += page.extract_text() + ' '
+    return text.strip()
 
-def extract_text_from_pdf(file_path: str) -> str:
-    with pdfplumber.open(file_path) as pdf:
-        text = "\n".join([page.extract_text() or "" for page in pdf.pages])
-    return text
 
-def extract_text_from_docx(file_path: str) -> str:
-    return docx2txt.process(file_path)
+def extract_text_from_docx(docx_path):
+    doc = docx.Document(docx_path)
+    return ' '.join([para.text for para in doc.paragraphs])
 
-def extract_text(file_path: str) -> str:
-    if file_path.lower().endswith(".pdf"):
-        return extract_text_from_pdf(file_path)
-    elif file_path.lower().endswith(".docx"):
-        return extract_text_from_docx(file_path)
+
+def detect_file_language(text):
+    try:
+        return detect(text)
+    except:
+        return "unknown"
+
+
+def extract_name(text):
+    doc = nlp(text)
+    for ent in doc.ents:
+        if ent.label_ == "PERSON":
+            return ent.text
+    return ""
+
+
+def extract_email(text):
+    match = re.search(r'[\w\.-]+@[\w\.-]+', text)
+    return match.group(0) if match else ""
+
+
+def extract_phone(text):
+    match = re.search(r'\+?\d[\d -]{8,}\d', text)
+    return match.group(0) if match else ""
+
+
+def extract_skills(text):
+    text = text.lower()
+    return [skill for skill in SKILLS_DB if skill in text]
+
+
+def extract_education(text):
+    edu = []
+    for keyword in EDUCATION_KEYWORDS:
+        if keyword in text.lower():
+            edu.append(keyword)
+    return edu
+
+
+def extract_experience(text):
+    exp_sentences = []
+    for line in text.split('\n'):
+        if any(keyword in line.lower() for keyword in EXPERIENCE_KEYWORDS):
+            exp_sentences.append(line.strip())
+    return exp_sentences
+
+
+def extract_locations(text):
+    return re.findall(LOCATION_REGEX, text)
+
+
+def parse_resume(file_path):
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext == '.pdf':
+        text = extract_text_from_pdf(file_path)
+    elif ext == '.docx':
+        text = extract_text_from_docx(file_path)
     else:
         raise ValueError("Unsupported file format")
 
-# =================== Parse Common Fields =====================
+    language = detect_file_language(text)
 
-def parse_resume_text(text: str) -> Dict[str, Optional[str]]:
-    name = extract_name(text)
-    email = extract_email(text)
-    phone = extract_phone(text)
-    skills = extract_skills(text)
-    summary = extract_summary(text)
-    return {
-        "name": name,
-        "email": email,
-        "phone": phone,
-        "skills": skills,
-        "summary": summary
+    resume_data = {
+        "name": extract_name(text),
+        "email": extract_email(text),
+        "phone": extract_phone(text),
+        "skills": extract_skills(text),
+        "education": extract_education(text),
+        "experience": extract_experience(text),
+        "locations": extract_locations(text),
+        "language": language,
+        "raw_text": text
     }
-
-# =================== Extract Individual Fields =====================
-
-def extract_name(text: str) -> Optional[str]:
-    lines = text.strip().splitlines()
-    return lines[0] if lines else None
-
-def extract_email(text: str) -> Optional[str]:
-    match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text)
-    return match.group(0) if match else None
-
-def extract_phone(text: str) -> Optional[str]:
-    match = re.search(r'\+?\d[\d\s\-()]{7,}\d', text)
-    return match.group(0) if match else None
-
-def extract_skills(text: str) -> str:
-    skills_section = re.findall(r"(skills|technical skills|technologies)\s*[:\-]?\s*(.*)", text, re.IGNORECASE)
-    if skills_section:
-        return skills_section[0][1].strip()
-    return ""
-
-def extract_summary(text: str) -> str:
-    summary_section = re.findall(r"(summary|professional summary)\s*[:\-]?\s*(.*)", text, re.IGNORECASE)
-    if summary_section:
-        return summary_section[0][1].strip()
-    return ""
-
-# =================== Unified Resume Parser Interface =====================
-
-def parse_resume(file_path: Optional[str] = None, source_data: Optional[dict] = None) -> Dict[str, str]:
-    """
-    Supports:
-    - file_path: uploaded PDF/DOCX resume
-    - source_data: dict from LinkedIn, Naukri, or Indeed import
-    """
-    if file_path:
-        text = extract_text(file_path)
-        return parse_resume_text(text)
-    elif source_data:
-        return {
-            "name": source_data.get("name", ""),
-            "email": source_data.get("email", ""),
-            "phone": source_data.get("phone", ""),
-            "skills": ", ".join(source_data.get("skills", [])),
-            "summary": source_data.get("summary", ""),
-        }
-    else:
-        raise ValueError("Either file_path or source_data must be provided")
+    return resume_data

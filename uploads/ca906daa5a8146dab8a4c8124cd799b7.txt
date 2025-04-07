@@ -1,0 +1,10 @@
+John Doe
+Software Developer
+
+Experience:
+- Developed websites
+- Worked on code
+
+Skills:
+- Python
+- Teamwork
