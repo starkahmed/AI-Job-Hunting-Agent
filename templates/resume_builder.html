@@ -1,0 +1,39 @@
+<!-- ===============================================================
+File: resume_builder.html
+Version: v6.0
+Description: UI to generate or enhance resume using AI
+================================================================ -->
+
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-4xl mx-auto mt-8 bg-white rounded-xl shadow p-6">
+  <h2 class="text-2xl font-bold mb-4">AI Resume Builder</h2>
+  
+  <form method="post" action="/resume-builder/generate" class="space-y-4">
+    <div>
+      <label for="summary" class="block font-semibold">Professional Summary:</label>
+      <textarea id="summary" name="summary" rows="4" class="w-full border rounded p-2" placeholder="Tell us briefly about your career goals and experience..."></textarea>
+    </div>
+
+    <div>
+      <label for="skills" class="block font-semibold">Key Skills (comma separated):</label>
+      <input id="skills" name="skills" type="text" class="w-full border rounded p-2" placeholder="e.g. Python, Machine Learning, Data Analysis">
+    </div>
+
+    <div>
+      <label for="achievements" class="block font-semibold">Notable Achievements:</label>
+      <textarea id="achievements" name="achievements" rows="3" class="w-full border rounded p-2"></textarea>
+    </div>
+
+    <div class="text-right">
+      <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">Generate Resume</button>
+    </div>
+  </form>
+
+  {% if resume_md %}
+  <hr class="my-6">
+  <h3 class="text-xl font-semibold">Preview (Markdown)</h3>
+  <pre class="bg-gray-100 p-4 rounded overflow-x-auto">{{ resume_md }}</pre>
+  {% endif %}
+</div>
+{% endblock %}
